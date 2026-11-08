@@ -1,4 +1,4 @@
-# LoopShield
+# LoopShield™
 
 LoopShield is a vendor-agnostic Python SDK and an OpenAI-compatible proxy that stops AI agents from burning tokens on the same tool cycle or the same thought. The proxy sits in front of the model provider. Every `POST /v1/chat/completions` is screened before it is forwarded. A detected loop comes back as a normal assistant message that tells the agent the repeating tool is locked and it must change strategy. The upstream provider is not called.
 
@@ -10,42 +10,41 @@ Clients keep speaking the provider’s chat API. LoopShield accepts an OpenAI Ch
 
 ```mermaid
 flowchart TD
-    agent["Agent or app"]
-    route["POST /v1/chat/completions"]
-    style{"Payload style"}
-    steps["Assistant turns become AgentSteps"]
-    inspect["LoopShield.inspect"]
-    graph["GraphAnalyzer<br/>exact tool-call cycle"]
-    semantic["SemanticAnalyzer<br/>cosine similarity of thoughts"]
-    loop{"Loop?"}
-    nudge["Intercepted assistant message<br/>intervention_prompt"]
-    budget{"Over SHIELD_MAX_TOKENS?"}
-    prune["prune_context<br/>keep system prompt and last 2 turns"]
-    openai["Upstream POST /v1/chat/completions"]
-    anthropic["Upstream POST /v1/messages"]
-
-    agent --> route --> style --> steps --> inspect
-    inspect --> graph
-    inspect --> semantic
-    graph --> loop
+    agent["Agent or app"] --> route["POST /v1/chat/completions"]
+    route --> steps["Assistant turns become AgentSteps"]
+    steps --> inspect["LoopShield.inspect"]
+    
+    inspect --> graph["GraphAnalyzer<br/>exact tool-call cycle"]
+    inspect --> semantic["SemanticAnalyzer<br/>cosine similarity of thoughts"]
+    
+    graph --> loop{"Loop detected?"}
     semantic --> loop
-    loop -->|yes| nudge
+    
+    loop -- Yes --> nudge["Return generated nudge<br/>(Intercepted payload)"]
     nudge --> agent
-    loop -->|no| budget
-    budget -->|yes| prune --> forward{"Provider"}
-    budget -->|no| forward
-    forward -->|OpenAI| openai
-    forward -->|Anthropic| anthropic
+    
+    loop -- No --> budget{"Over SHIELD_MAX_TOKENS?"}
+    budget -- Yes --> prune["Apply prune_context<br/>(Symmetrical Pruning)"]
+    
+    prune --> forward{"Provider Engine"}
+    budget -- No --> forward
+    
+    forward -->|OpenAI| openai["Upstream POST /v1/chat/completions"]
+    forward -->|Anthropic| anthropic["Upstream POST /v1/messages"]
+    
     openai --> agent
     anthropic --> agent
+
+    style route fill:#f9f,stroke:#333,stroke-width:2px
+    style nudge fill:#f96,stroke:#333,stroke-width:2px
 ```
 
 A clean request is forwarded with the caller’s `Authorization`, `x-api-key`, `anthropic-version`, `anthropic-beta`, `openai-organization`, and `openai-project` headers. LoopShield does not store those credentials.
 
 When a loop is found, the JSON response still looks like a completion:
 
-- OpenAI: `object` is `chat.completion`, and `choices[0].message.content` is the nudge.
-- Anthropic: `type` is `message`, `role` is `assistant`, and the text block is the nudge.
+- **OpenAI:** `object` is `chat.completion`, and `choices[0].message.content` is the nudge.
+- **Anthropic:** `type` is `message`, `role` is `assistant`, and the text block is the nudge.
 - Both include `loopshield.intercepted`, `loopshield.loop_type` (`graph_cycle`, `semantic`, or `both`), and `loopshield.intervention_prompt`.
 
 `stream: true` on an intercepted call is returned as server-sent events with the same nudge. `GET /health` returns `{"status": "ok"}`.
@@ -55,8 +54,8 @@ When a loop is found, the JSON response still looks like a completion:
 Build and run the gateway on port 8000. Point `UPSTREAM_API_BASE` at the provider you want clean calls to reach.
 
 ```bash
-docker build -t loopshield:0.1.0 .
-docker run --rm -p 8000:8000 -e UPSTREAM_API_BASE=https://api.openai.com -e SHIELD_SIMILARITY_THRESHOLD=0.92 loopshield:0.1.0
+docker build -t loopshield:1.0.0 .
+docker run --rm -p 8000:8000 -e UPSTREAM_API_BASE=https://api.openai.com -e SHIELD_SIMILARITY_THRESHOLD=0.92 loopshield:1.0.0
 ```
 
 Check the process, then send a chat completion through it. The provider key stays on the request; the container only forwards it.
@@ -69,7 +68,7 @@ curl http://127.0.0.1:8000/health
 curl http://127.0.0.1:8000/v1/chat/completions \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d "{\"model\":\"gpt-4.1\",\"messages\":[{\"role\":\"user\",\"content\":\"Summarize the deploy log.\"}]}"
+  -d "{\"model\":\"gpt-4o\",\"messages\":[{\"role\":\"user\",\"content\":\"Summarize the deploy log.\"}]}"
 ```
 
 An OpenAI SDK client uses the proxy as its base URL:
@@ -79,7 +78,7 @@ from openai import OpenAI
 
 client = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key="sk-...")
 completion = client.chat.completions.create(
-    model="gpt-4.1",
+    model="gpt-4o",
     messages=[{"role": "user", "content": "Summarize the deploy log."}],
 )
 ```
@@ -87,7 +86,7 @@ completion = client.chat.completions.create(
 Anthropic-shaped traffic uses the same path. Set the upstream base to `https://api.anthropic.com` and send the provider headers the proxy already forwards:
 
 ```bash
-docker run --rm -p 8000:8000 -e UPSTREAM_API_BASE=https://api.anthropic.com loopshield:0.1.0
+docker run --rm -p 8000:8000 -e UPSTREAM_API_BASE=https://api.anthropic.com loopshield:1.0.0
 ```
 
 ```bash
@@ -95,7 +94,7 @@ curl http://127.0.0.1:8000/v1/chat/completions \
   -H "x-api-key: $ANTHROPIC_API_KEY" \
   -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
-  -d "{\"model\":\"claude-sonnet-4-5\",\"max_tokens\":256,\"system\":\"Be careful.\",\"messages\":[{\"role\":\"user\",\"content\":\"Summarize the deploy log.\"}]}"
+  -d "{\"model\":\"claude-3-5-sonnet-latest\",\"max_tokens\":256,\"system\":\"Be careful.\",\"messages\":[{\"role\":\"user\",\"content\":\"Summarize the deploy log.\"}]}"
 ```
 
 The official Anthropic SDK posts to `/v1/messages`. This gateway accepts that payload shape on `/v1/chat/completions`, then forwards a clean call to `{UPSTREAM_API_BASE}/v1/messages`. If the upstream base already ends in `/v1`, that prefix is not doubled.
@@ -125,7 +124,7 @@ The proxy calls `inspect`, which does not keep request history on the shared pro
 Install the library when the agent loop lives in your own code and you do not need the gateway:
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[all]"
 ```
 
 Record each step. A verdict with `is_loop` carries the system nudge to send back to the model.
@@ -150,52 +149,19 @@ if verdict.is_loop:
 
 `@shield.guard` wraps a function that takes an `AgentStep`. When the new step closes a loop, the decorator returns the `LoopVerdict` and does not call the function. Pass an initialized OpenAI or Ollama client as `embedding=` to replace the TF-IDF fallback; pass `embed_fn=` for any other model. Do not pass both.
 
-`prune_context(messages, max_tokens_estimate)` takes OpenAI-style message dicts. It estimates tokens from `token_count`, `tokens`, or `usage.total_tokens` when present, otherwise from character length at about four characters per token.
+`prune_context(messages, max_tokens_estimate)` takes OpenAI-style message dicts. It estimates tokens from `token_count`, `tokens`, or `usage.total_tokens` when present, otherwise from character length at about four characters per token. It handles tool execution histories symmetrically, stripping the triggering tool calls alongside their matching failed results to keep payload layouts structurally valid.
 
 ## Framework integrations
 
 `loopshield/frameworks.py` plugs the same engine into LangChain, CrewAI, and LangGraph. Each framework is an optional install (`pip install "loopshield[langchain]"`, `[langgraph]`, `[crewai]`). The hooks keep no history on the shield, so one `LoopShield` can serve concurrent runs.
 
-**LangChain.** `shield.langchain_middleware(config)` returns an `AgentMiddleware`:
+### LangChain Integration
+`shield.langchain_middleware(config)` returns a native `AgentMiddleware` wrapper. 
+- The tool hook intercepts the loop dynamically before the execution runs.
+- The model hook invokes `prune_context` natively when the execution transcript breaches your configuration budgets.
+- If a loop reaches the model, it replies with the system nudge *before* the upstream LLM is invoked. Setting `on_loop="inject"` appends the nudge as a system message and lets the model proceed.
 
-```python
-from langchain.agents import create_agent
+### CrewAI Integration
+The `@shield.crewai_agent()` decorator can be applied over the `execute_task` execution blocks, supporting both synchronous and asynchronous operations. It reconstructs the historical tool graph directly from `agent.tools_results` or parses execution syntax structures directly from action blocks within context patterns, inserting self-healing nudges into execution pathways without stacking duplicate calls.
 
-agent = create_agent(model, tools, middleware=[shield.langchain_middleware({"max_tokens": 6000})])
-```
-
-- `wrap_tool_call` replaces a looping tool call with an error `ToolMessage` that carries the nudge. The tool does not run, and the model reads why on its next turn.
-- `wrap_model_call` runs `prune_context` when the transcript is over budget. For a loop that reaches the model, it answers with the nudge before the LLM is called. Set `on_loop` to `inject` to append the nudge as a system message and let the model run.
-
-**CrewAI.** `@shield.crewai_agent()` wraps `Agent.execute_task`, either on a class or on the method. It rebuilds the tool trajectory from `agent.tools_results`, or from the `Action` / `Action Input` lines in the string context. When the tools loop, the nudge is prepended to the `context` string that the next step reads.
-
-```python
-@shield.crewai_agent()
-class GuardedAgent(Agent): ...
-```
-
-**LangGraph.** `shield.langgraph_node()` wraps a node. A looping `state["messages"]` gets the system nudge as a state update, and the node is skipped for that pass. With `{"retry_node": "agent"}` it returns `Command(update=..., goto="agent")`, so the graph re-enters that node with the nudge in context. The `messages` channel needs an appending reducer such as `add_messages`.
-
-```python
-graph.add_node("agent", shield.langgraph_node(agent_node, config={"retry_node": "agent"}))
-```
-
-## Development
-
-```bash
-python -m pytest
-```
-
-Python 3.11 or newer. Tests live in `tests/` and cover tool-call cycles, semantic streaks, recovery after a nudge, context pruning, embedding adapters, and the proxy with a mocked upstream.
-
-| Module | Role |
-| --- | --- |
-| `loopshield/models.py` | `AgentStep` and `LoopVerdict` |
-| `loopshield/graph_analyzer.py` | Directed tool-call cycles |
-| `loopshield/semantic_analyzer.py` | Cosine similarity of thoughts |
-| `loopshield/mitigator.py` | Intervention nudge and context pruning |
-| `loopshield/shield.py` | `LoopShield.step`, `inspect`, and `guard` |
-| `loopshield/adapters.py` | Optional OpenAI and Ollama embedding wrappers |
-| `loopshield/proxy.py` | FastAPI gateway served by uvicorn |
-| `loopshield/transcript.py` | Chat messages from any framework to `AgentStep`s |
-| `loopshield/frameworks.py` | LangChain, CrewAI, and LangGraph integrations |
+### LangGraph Integration
