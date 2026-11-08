@@ -151,17 +151,16 @@ if verdict.is_loop:
 
 `prune_context(messages, max_tokens_estimate)` takes OpenAI-style message dicts. It estimates tokens from `token_count`, `tokens`, or `usage.total_tokens` when present, otherwise from character length at about four characters per token. It handles tool execution histories symmetrically, stripping the triggering tool calls alongside their matching failed results to keep payload layouts structurally valid.
 
+### 🧪 Testing & Trajectory Calibration
+
+When writing validation scripts or executing automated loops locally, follow these mechanical matching patterns to ensure detection matches expectations:
+
+1. **The Circuit Rule (max_cycles=1):** A directed tool graph cycle requires a full circuit path (lap) to close before registering. Triggering a loop with `max_cycles=1` means the agent must run through two distinct laps sequentially (e.g., `Tool A -> Tool B -> Tool A -> Tool B -> Tool A`). The system permits the initial repetition step to run safely and flags on the fifth step.
+2. **Textless Tool Submissions:** When an assistant turn executes tool blocks without writing a text thought parameter, LoopShield automatically groups the `tool_name` and `tool_args` into a unified structural key. Always maintain key-value pairing integrity inside `tool_args` parameters during unit tests.
+3. **Pure Reasoning Streams:** To evaluate consecutive semantic similarities when an agent rephrases plans without calling any execution functions, supply a tracking constant into `tool_name` (e.g., `tool_name="thought_only"`) to pass schema requirements cleanly.
+
 ## Framework integrations
 
 `loopshield/frameworks.py` plugs the same engine into LangChain, CrewAI, and LangGraph. Each framework is an optional install (`pip install "loopshield[langchain]"`, `[langgraph]`, `[crewai]`). The hooks keep no history on the shield, so one `LoopShield` can serve concurrent runs.
 
-### LangChain Integration
-`shield.langchain_middleware(config)` returns a native `AgentMiddleware` wrapper. 
-- The tool hook intercepts the loop dynamically before the execution runs.
-- The model hook invokes `prune_context` natively when the execution transcript breaches your configuration budgets.
-- If a loop reaches the model, it replies with the system nudge *before* the upstream LLM is invoked. Setting `on_loop="inject"` appends the nudge as a system message and lets the model proceed.
-
-### CrewAI Integration
-The `@shield.crewai_agent()` decorator can be applied over the `execute_task` execution blocks, supporting both synchronous and asynchronous operations. It reconstructs the historical tool graph directly from `agent.tools_results` or parses execution syntax structures directly from action blocks within context patterns, inserting self-healing nudges into execution pathways without stacking duplicate calls.
-
-### LangGraph Integration
+**LangChain.** `shield.langchain_middleware(config)` returns a native `AgentMiddleware` wrapper.
