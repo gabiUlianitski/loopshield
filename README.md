@@ -14,17 +14,17 @@ flowchart TD
     route --> steps["Assistant turns become AgentSteps"]
     steps --> inspect["LoopShield.inspect"]
     
-    inspect --> graph["GraphAnalyzer<br/>exact tool-call cycle"]
-    inspect --> semantic["SemanticAnalyzer<br/>cosine similarity of thoughts"]
+    inspect --> graph["GraphAnalyzer: exact tool-call cycle"]
+    inspect --> semantic["SemanticAnalyzer: cosine similarity of thoughts"]
     
     graph --> loop{"Loop detected?"}
     semantic --> loop
     
-    loop -- Yes --> nudge["Return generated nudge<br/>(Intercepted payload)"]
+    loop -- Yes --> nudge["Return generated nudge (Intercepted payload)"]
     nudge --> agent
     
     loop -- No --> budget{"Over SHIELD_MAX_TOKENS?"}
-    budget -- Yes --> prune["Apply prune_context<br/>(Symmetrical Pruning)"]
+    budget -- Yes --> prune["Apply prune_context (Symmetrical Pruning)"]
     
     prune --> forward{"Provider Engine"}
     budget -- No --> forward
@@ -55,17 +55,17 @@ Build and run the gateway on port 8000. Point `UPSTREAM_API_BASE` at the provide
 
 ```bash
 docker build -t loopshield:1.0.0 .
-docker run --rm -p 8000:8000 -e UPSTREAM_API_BASE=https://api.openai.com -e SHIELD_SIMILARITY_THRESHOLD=0.92 loopshield:1.0.0
+docker run --rm -p 8000:8000 -e UPSTREAM_API_BASE=https://openai.com -e SHIELD_SIMILARITY_THRESHOLD=0.92 loopshield:1.0.0
 ```
 
 Check the process, then send a chat completion through it. The provider key stays on the request; the container only forwards it.
 
 ```bash
-curl http://127.0.0.1:8000/health
+curl http://127.0.0
 ```
 
 ```bash
-curl http://127.0.0.1:8000/v1/chat/completions \
+curl http://127.0.0 \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \
   -d "{\"model\":\"gpt-4o\",\"messages\":[{\"role\":\"user\",\"content\":\"Summarize the deploy log.\"}]}"
@@ -76,21 +76,21 @@ An OpenAI SDK client uses the proxy as its base URL:
 ```python
 from openai import OpenAI
 
-client = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key="sk-...")
+client = OpenAI(base_url="http://127.0.0", api_key="sk-...")
 completion = client.chat.completions.create(
     model="gpt-4o",
     messages=[{"role": "user", "content": "Summarize the deploy log."}],
 )
 ```
 
-Anthropic-shaped traffic uses the same path. Set the upstream base to `https://api.anthropic.com` and send the provider headers the proxy already forwards:
+Anthropic-shaped traffic uses the same path. Set the upstream base to `https://anthropic.com` and send the provider headers the proxy already forwards:
 
 ```bash
-docker run --rm -p 8000:8000 -e UPSTREAM_API_BASE=https://api.anthropic.com loopshield:1.0.0
+docker run --rm -p 8000:8000 -e UPSTREAM_API_BASE=https://anthropic.com loopshield:1.0.0
 ```
 
 ```bash
-curl http://127.0.0.1:8000/v1/chat/completions \
+curl http://127.0.0 \
   -H "x-api-key: $ANTHROPIC_API_KEY" \
   -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
@@ -103,7 +103,7 @@ The official Anthropic SDK posts to `/v1/messages`. This gateway accepts that pa
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `UPSTREAM_API_BASE` | `https://api.openai.com` | Origin for forwarded calls. OpenAI traffic goes to `/v1/chat/completions`. Anthropic traffic goes to `/v1/messages`. |
+| `UPSTREAM_API_BASE` | `https://openai.com` | Origin for forwarded calls. OpenAI traffic goes to `/v1/chat/completions`. Anthropic traffic goes to `/v1/messages`. |
 | `SHIELD_SIMILARITY_THRESHOLD` | `0.92` | Cosine similarity, from 0 to 1, above which two thoughts count as the same line of reasoning. The comparison is strict `>`. |
 | `SHIELD_MAX_TOKENS` | `8000` | Estimated token budget. Over this, `prune_context` keeps the leading system prompt and the last two turns, and collapses repeated tool errors in the middle. |
 | `SHIELD_MAX_CYCLES` | `1` | A directed tool cycle is a loop when it completes more times than this. `1` allows one lap and flags the second. `0` flags the first time the cycle closes. |
