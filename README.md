@@ -10,40 +10,40 @@ Clients keep speaking the provider’s chat API. LoopShield accepts an OpenAI Ch
 
 ```mermaid
 flowchart TD
-    agent["Agent or app"] --> route["POST /v1/chat/completions"]
-    route --> steps["Assistant turns become AgentSteps"]
-    steps --> inspect["LoopShield.inspect"]
+    A["Agent or app"] --> B["POST /v1/chat/completions"]
+    B --> C["Assistant turns become AgentSteps"]
+    C --> D["LoopShield.inspect"]
     
-    inspect --> graph["GraphAnalyzer: exact tool-call cycle"]
-    inspect --> semantic["SemanticAnalyzer: cosine similarity of thoughts"]
+    D --> E["GraphAnalyzer: exact tool-call cycle"]
+    D --> F["SemanticAnalyzer: cosine similarity of thoughts"]
     
-    graph --> loop{"Loop detected?"}
-    semantic --> loop
+    E --> G{"Loop detected?"}
+    F --> G
     
-    loop -- Yes --> nudge["Return generated nudge (Intercepted payload)"]
-    nudge --> agent
+    G -- "Yes" --> H["Return generated nudge (Intercepted payload)"]
+    H --> A
     
-    loop -- No --> budget{"Over SHIELD_MAX_TOKENS?"}
-    budget -- Yes --> prune["Apply prune_context (Symmetrical Pruning)"]
+    G -- "No" --> I{"Over SHIELD_MAX_TOKENS?"}
+    I -- "Yes" --> J["Apply prune_context (Symmetrical Pruning)"]
     
-    prune --> forward{"Provider Engine"}
-    budget -- No --> forward
+    J --> K{"Provider Engine"}
+    I -- "No" --> K
     
-    forward -->|OpenAI| openai["Upstream POST /v1/chat/completions"]
-    forward -->|Anthropic| anthropic["Upstream POST /v1/messages"]
+    K -- "OpenAI" --> L["Upstream POST /v1/chat/completions"]
+    K -- "Anthropic" --> M["Upstream POST /v1/messages"]
     
-    openai --> agent
-    anthropic --> agent
+    L --> A
+    M --> A
 
-    style route fill:#f9f,stroke:#333,stroke-width:2px
-    style nudge fill:#f96,stroke:#333,stroke-width:2px
+    style B fill:#f9f,stroke:#333,stroke-width:2px
+    style H fill:#f96,stroke:#333,stroke-width:2px
 ```
 
 A clean request is forwarded with the caller’s `Authorization`, `x-api-key`, `anthropic-version`, `anthropic-beta`, `openai-organization`, and `openai-project` headers. LoopShield does not store those credentials.
 
 When a loop is found, the JSON response still looks like a completion:
 
-- **OpenAI:** `object` is `chat.completion`, and `choices[0].message.content` is the nudge.
+- **OpenAI:** `object` is `chat.completion`, and `choices.message.content` is the nudge.
 - **Anthropic:** `type` is `message`, `role` is `assistant`, and the text block is the nudge.
 - Both include `loopshield.intercepted`, `loopshield.loop_type` (`graph_cycle`, `semantic`, or `both`), and `loopshield.intervention_prompt`.
 
@@ -164,3 +164,5 @@ When writing validation scripts or executing automated loops locally, follow the
 `loopshield/frameworks.py` plugs the same engine into LangChain, CrewAI, and LangGraph. Each framework is an optional install (`pip install "loopshield[langchain]"`, `[langgraph]`, `[crewai]`). The hooks keep no history on the shield, so one `LoopShield` can serve concurrent runs.
 
 **LangChain.** `shield.langchain_middleware(config)` returns a native `AgentMiddleware` wrapper.
+- The tool hook intercepts the loop dynamically before the execution runs.
+- The model hook invokes `prune_context` natively when the execution transcript breaches configuration budgets.
