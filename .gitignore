@@ -1,0 +1,51 @@
+# Bytecode and caches
+__pycache__/
+*.py[cod]
+*.pyc
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+.cache/
+.tox/
+.nox/
+
+# Packaging
+build/
+dist/
+site/
+*.egg
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+*.whl
+
+# Coverage and test output
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.junit/
+
+# Environments and secrets
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+ENV/
+virtualenv/
+.python-version
+
+# Local tooling
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~

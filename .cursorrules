@@ -1,0 +1,5 @@
+You are building LoopShield, a lightweight, vendor-agnostic Python SDK for AI agent loop detection and self-healing middleware.
+- Use Python 3.11+ with strict type hints and Pydantic v2 models for data validation.
+- Keep dependencies minimal: use `networkx` for directed graph cycle detection, `numpy` for cosine similarity, and `pytest` for testing.
+- Avoid heavy cloud SDKs in the core package; design interfaces using abstract base classes or protocols so any LLM or embedding model can be plugged in.
+- Follow modular architecture: separate graph analysis, semantic comparison, context pruning, and prompt nudging into distinct modules under `loopshield/`.
